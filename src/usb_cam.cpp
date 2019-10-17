@@ -375,6 +375,18 @@ int UsbCam::init_mjpeg_decoder(int image_width, int image_height)
   }
 
   avcodec_context_ = avcodec_alloc_context3(avcodec_);
+
+  // Suppress warnings of the following form:
+  //
+  // [swscaler @ 0x############] deprecated pixel format used, make sure you did set range correctly
+  //
+  // Or set this to AV_LOG_FATAL to additionally suppress occasional frame errors, e.g.:
+  //
+  // [mjpeg @ 0x############] overread 4
+  // [mjpeg @ 0x############] No JPEG data found in image
+  // [ERROR] [##########.##########]: Error while decoding frame.
+  av_log_set_level(AV_LOG_ERROR);
+	
 #if LIBAVCODEC_VERSION_MAJOR < 55
   avframe_camera_ = avcodec_alloc_frame();
   avframe_rgb_ = avcodec_alloc_frame();
@@ -394,7 +406,8 @@ int UsbCam::init_mjpeg_decoder(int image_width, int image_height)
   avcodec_context_->codec_type = AVMEDIA_TYPE_VIDEO;
 #endif
 
-  avframe_camera_size_ = avpicture_get_size(AV_PIX_FMT_YUV422P, image_width, image_height);
+  // avframe_camera_size_ = avpicture_get_size(AV_PIX_FMT_YUV422P, image_width, image_height);
+  avframe_camera_size_ = avpicture_get_size(AV_PIX_FMT_YUV420P, image_width, image_height); 
   avframe_rgb_size_ = avpicture_get_size(AV_PIX_FMT_RGB24, image_width, image_height);
 
   /* open it */

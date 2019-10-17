@@ -456,8 +456,16 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   int pic_size = avpicture_get_size(avcodec_context_->pix_fmt, xsize, ysize);
   if (pic_size != avframe_camera_size_)
   {
-    ROS_ERROR("outbuf size mismatch.  pic_size: %d bufsize: %d", pic_size, avframe_camera_size_);
-    avframe_camera_size_ = pic_size;
+	static int initialize_flag = 1;
+	if(1==initialize_flag){
+		ROS_INFO("Resizing buffer:  buf_size: %d -> %d", avframe_camera_size_, pic_size);
+		avframe_camera_size_ = pic_size;
+		initialize_flag = 0;
+		return;
+	}else{
+		ROS_ERROR("outbuf size mismatch.  pic_size: %d bufsize: %d", pic_size, avframe_camera_size_);
+	}
+
     return;
   }
 

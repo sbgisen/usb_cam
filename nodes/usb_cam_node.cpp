@@ -191,10 +191,15 @@ public:
     // check auto exposure
     if (!autoexposure_)
     {
-      // turn down exposure control (from max of 3)
+      // exposure_auto (menu) : 1 (Manual Mode)
       cam_.set_v4l_parameter("exposure_auto", 1);
       // change the exposure level
       cam_.set_v4l_parameter("exposure_absolute", exposure_);
+    }
+    else
+    {
+      // exposure_auto (menu) : 3 (Aperture Priority Mode)
+      cam_.set_v4l_parameter("exposure_auto", 3);
     }
 
     // check auto focus

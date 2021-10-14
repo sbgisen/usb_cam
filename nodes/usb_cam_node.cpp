@@ -57,9 +57,9 @@ public:
   std::string video_device_name_, io_method_name_, pixel_format_name_, camera_name_, camera_info_url_;
   //std::string start_service_name_, start_service_name_;
   bool streaming_status_;
-  int image_width_, image_height_, framerate_, exposure_, brightness_, contrast_, saturation_, hue_, sharpness_, focus_,
-      white_balance_temperature_, gain_, gamma_, power_line_frequency_, backlight_compensation_;
-  bool autofocus_, autoexposure_, white_balance_temperature_auto_;
+  int image_width_, image_height_, framerate_, exposure_, brightness_, contrast_, saturation_, sharpness_, focus_,
+      white_balance_, gain_;
+  bool autofocus_, autoexposure_, auto_white_balance_;
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
 
   UsbCam cam_;
@@ -90,20 +90,10 @@ public:
 
     // grab the parameters
     node_.param("video_device", video_device_name_, std::string("/dev/video0"));
-    //TODO:set -255 for each v4l params leave alone
-    //you can look into v4l params with "v4l2-ctl --list-ctrls" command in your terminal.
-    node_.param("brightness", brightness_, 0); //min=-64 max=64 step=1 default=0 value=0
-    node_.param("contrast", contrast_, 32); //min=0 max=64 step=1 default=32 value=32
-    node_.param("saturation", saturation_, 67); //min=0 max=128 step=1 default=67 value=67
-    node_.param("hue", hue_, 0); //min=-40 max=40 step=1 default=0 value=0
-    node_.param("white_balance_temperature_auto", white_balance_temperature_auto_, true);//default=1 value=1
-    node_.param("gamma", gamma_, 110); //min=72 max=150 step=1 default=110 value=110
-    node_.param("gain", gain_, 0); //min=0 max=80 step=1 default=0 value=0
-    node_.param("power_line_frequency", power_line_frequency_, 0); //0:disable, 1:50Hz, 2:60Hz(default)
-    node_.param("white_balance_temperature", white_balance_temperature_, 4600);//min=2800 max=6500 step=1 default=4600 value=4600 flags=inactive
-    node_.param("sharpness", sharpness_, 3); //min=0 max=6 step=1 default=3 value=3
-    node_.param("backlight_compensation", backlight_compensation_, 1); //min=0 max=2 step=1 default=1 value=1
-
+    node_.param("brightness", brightness_, -1); //0-255, -1 "leave alone"
+    node_.param("contrast", contrast_, -1); //0-255, -1 "leave alone"
+    node_.param("saturation", saturation_, -1); //0-255, -1 "leave alone"
+    node_.param("sharpness", sharpness_, -1); //0-255, -1 "leave alone"
     // possible values: mmap, read, userptr
     node_.param("io_method", io_method_name_, std::string("mmap"));
     node_.param("image_width", image_width_, 640);
@@ -113,11 +103,14 @@ public:
     node_.param("pixel_format", pixel_format_name_, std::string("mjpeg"));
     // enable/disable autofocus
     node_.param("autofocus", autofocus_, false);
-    node_.param("focus", focus_, -1); //min=0 max=250 step=5 default=81 value=0 flags=inactive
+    node_.param("focus", focus_, -1); //0-255, -1 "leave alone"
     // enable/disable autoexposure
     node_.param("autoexposure", autoexposure_, true);
     node_.param("exposure", exposure_, 100);
-
+    node_.param("gain", gain_, -1); //0-100?, -1 "leave alone"
+    // enable/disable auto white balance temperature
+    node_.param("auto_white_balance", auto_white_balance_, true);
+    node_.param("white_balance", white_balance_, 4000);
 
     // load the camera info
     node_.param("camera_frame_id", img_.header.frame_id, std::string("head_camera"));
@@ -167,25 +160,40 @@ public:
 		     image_height_, framerate_);
 
     // set camera parameters
-	cam_.set_v4l_parameter("brightness", brightness_);
-	cam_.set_v4l_parameter("contrast", contrast_);
-	cam_.set_v4l_parameter("saturation", saturation_);
-	cam_.set_v4l_parameter("hue", hue_);
-	cam_.set_v4l_parameter("gamma", gamma_);
-	cam_.set_v4l_parameter("gain", gain_);
-	cam_.set_v4l_parameter("power_line_frequency", power_line_frequency_);
-	cam_.set_v4l_parameter("sharpness", sharpness_);
-	cam_.set_v4l_parameter("backlight_compensation", backlight_compensation_);
+    if (brightness_ >= 0)
+    {
+      cam_.set_v4l_parameter("brightness", brightness_);
+    }
+
+    if (contrast_ >= 0)
+    {
+      cam_.set_v4l_parameter("contrast", contrast_);
+    }
+
+    if (saturation_ >= 0)
+    {
+      cam_.set_v4l_parameter("saturation", saturation_);
+    }
+
+    if (sharpness_ >= 0)
+    {
+      cam_.set_v4l_parameter("sharpness", sharpness_);
+    }
+
+    if (gain_ >= 0)
+    {
+      cam_.set_v4l_parameter("gain", gain_);
+    }
 
     // check auto white balance
-    if (white_balance_temperature_auto_)
+    if (auto_white_balance_)
     {
       cam_.set_v4l_parameter("white_balance_temperature_auto", 1);
     }
     else
     {
       cam_.set_v4l_parameter("white_balance_temperature_auto", 0);
-      cam_.set_v4l_parameter("white_balance_temperature", white_balance_temperature_);
+      cam_.set_v4l_parameter("white_balance_temperature", white_balance_);
     }
 
     // check auto exposure
@@ -206,7 +214,10 @@ public:
     else
     {
       cam_.set_v4l_parameter("focus_auto", 0);
-      cam_.set_v4l_parameter("focus_absolute", focus_);
+      if (focus_ >= 0)
+      {
+        cam_.set_v4l_parameter("focus_absolute", focus_);
+      }
     }
   }
 

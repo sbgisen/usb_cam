@@ -59,7 +59,8 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
         this,
         std::placeholders::_1,
         std::placeholders::_2,
-        std::placeholders::_3)))
+        std::placeholders::_3))),
+  m_updater(this)
 {
   // declare params
   this->declare_parameter("camera_name", "default_cam");
@@ -83,6 +84,7 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("exposure", 100);
   this->declare_parameter("autofocus", false);
   this->declare_parameter("focus", -1);  // 0-255, -1 "leave alone"
+  this->declare_parameter("diagnostic_tolerance", 0.1);
 
   get_params();
   init();
@@ -211,6 +213,21 @@ void UsbCamNode::init()
   m_camera->configure(m_parameters, io_method);
 
   set_v4l2_params();
+
+  auto tolerance = this->get_parameter("diagnostic_tolerance").as_double();
+  m_updater.setHardwareID(m_parameters.camera_name);
+
+  std::string topic_name;
+  if (m_parameters.pixel_format_name == "mjpeg") {
+    topic_name = m_compressed_image_publisher->get_topic_name();
+  } else {
+    topic_name = m_image_publisher->getTopic();
+  }
+  m_topic_frequency = m_parameters.framerate;
+  m_topic_diagnostic = std::make_shared<diagnostic_updater::TopicDiagnostic>(
+      topic_name, m_updater,
+      diagnostic_updater::FrequencyStatusParam(&m_topic_frequency, &m_topic_frequency, tolerance, 10),
+      diagnostic_updater::TimeStampStatusParam());
 
   // start the camera
   m_camera->start();
@@ -458,6 +475,7 @@ void UsbCamNode::publish()
   } else {
     m_image_publisher->publish(*m_image_msg, *m_camera_info_msg);
   }
+  m_topic_diagnostic->tick(m_camera_info_msg->header.stamp);
 }
 }  // namespace usb_cam
 

@@ -36,6 +36,8 @@
 #include <vector>
 
 #include "camera_info_manager/camera_info_manager.hpp"
+#include "diagnostic_updater/diagnostic_updater.hpp"
+#include "diagnostic_updater/publisher.hpp"
 #include "image_transport/image_transport.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -66,6 +68,7 @@ public:
   void assign_params(const std::vector<rclcpp::Parameter> & parameters);
   void set_v4l2_params();
   void update();
+  void publish();
   bool take_and_send_image();
   bool take_and_send_image_mjpeg();
 
@@ -91,9 +94,14 @@ public:
   std::shared_ptr<camera_info_manager::CameraInfoManager> m_camera_info;
 
   rclcpp::TimerBase::SharedPtr m_timer;
+  rclcpp::TimerBase::SharedPtr m_publish_timer;
 
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr m_service_capture;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr m_parameters_callback_handle;
+
+  diagnostic_updater::Updater m_updater;
+  std::shared_ptr<diagnostic_updater::TopicDiagnostic> m_topic_diagnostic;
+  double m_topic_frequency;
 };
 }  // namespace usb_cam
 #endif  // USB_CAM__USB_CAM_NODE_HPP_

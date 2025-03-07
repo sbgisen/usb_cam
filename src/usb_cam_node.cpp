@@ -59,7 +59,8 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
         this,
         std::placeholders::_1,
         std::placeholders::_2,
-        std::placeholders::_3)))
+        std::placeholders::_3))),
+  m_updater(this)
 {
   // declare params
   this->declare_parameter("camera_name", "default_cam");
@@ -83,6 +84,7 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("exposure", 100);
   this->declare_parameter("autofocus", false);
   this->declare_parameter("focus", -1);  // 0-255, -1 "leave alone"
+  this->declare_parameter("diagnostic_tolerance", 0.1);
 
   get_params();
   init();
@@ -100,6 +102,7 @@ UsbCamNode::~UsbCamNode()
   m_camera_info_msg.reset();
   m_camera_info.reset();
   m_timer.reset();
+  m_publish_timer.reset();
   m_service_capture.reset();
   m_parameters_callback_handle.reset();
 
@@ -211,16 +214,44 @@ void UsbCamNode::init()
 
   set_v4l2_params();
 
+  auto tolerance = this->get_parameter("diagnostic_tolerance").as_double();
+  m_updater.setHardwareID(m_parameters.camera_name);
+
+  std::string topic_name;
+  if (m_parameters.pixel_format_name == "mjpeg") {
+    topic_name = m_compressed_image_publisher->get_topic_name();
+  } else {
+    topic_name = m_image_publisher->getTopic();
+  }
+  m_topic_frequency = m_parameters.framerate;
+  m_topic_diagnostic = std::make_shared<diagnostic_updater::TopicDiagnostic>(
+      topic_name, m_updater,
+      diagnostic_updater::FrequencyStatusParam(&m_topic_frequency, &m_topic_frequency, tolerance, 10),
+      diagnostic_updater::TimeStampStatusParam());
+
   // start the camera
   m_camera->start();
 
+  auto frame_rate = m_camera->get_frame_rate();
+  if (static_cast<size_t>(m_parameters.framerate) > frame_rate) {
+    RCLCPP_WARN_STREAM(
+      this->get_logger(),
+      "Desired framerate " << m_parameters.framerate << " is higher than the camera's capability " <<
+        frame_rate << " fps");
+    m_parameters.framerate = frame_rate;
+  }
+
   // TODO(lucasw) should this check a little faster than expected frame rate?
   // TODO(lucasw) how to do small than ms, or fractional ms- std::chrono::nanoseconds?
-  const int period_ms = 1000.0 / m_parameters.framerate;
+  const int period_ms = 1000.0 / frame_rate;
   m_timer = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int64_t>(period_ms)),
     std::bind(&UsbCamNode::update, this));
   RCLCPP_INFO_STREAM(this->get_logger(), "Timer triggering every " << period_ms << " ms");
+  const int publish_period_ms = 1000.0 / m_parameters.framerate;
+  m_publish_timer = this->create_wall_timer(
+    std::chrono::milliseconds(static_cast<int64_t>(publish_period_ms)),
+    std::bind(&UsbCamNode::publish, this));
 }
 
 void UsbCamNode::get_params()
@@ -384,7 +415,6 @@ bool UsbCamNode::take_and_send_image()
 
   *m_camera_info_msg = m_camera_info->getCameraInfo();
   m_camera_info_msg->header = m_image_msg->header;
-  m_image_publisher->publish(*m_image_msg, *m_camera_info_msg);
   return true;
 }
 
@@ -406,8 +436,6 @@ bool UsbCamNode::take_and_send_image_mjpeg()
   *m_camera_info_msg = m_camera_info->getCameraInfo();
   m_camera_info_msg->header = m_compressed_img_msg->header;
 
-  m_compressed_image_publisher->publish(*m_compressed_img_msg);
-  m_compressed_cam_info_publisher->publish(*m_camera_info_msg);
   return true;
 }
 
@@ -437,6 +465,17 @@ void UsbCamNode::update()
       RCLCPP_WARN_ONCE(this->get_logger(), "USB camera did not respond in time.");
     }
   }
+}
+
+void UsbCamNode::publish()
+{
+  if (m_parameters.pixel_format_name == "mjpeg") {
+    m_compressed_image_publisher->publish(*m_compressed_img_msg);
+    m_compressed_cam_info_publisher->publish(*m_camera_info_msg);
+  } else {
+    m_image_publisher->publish(*m_image_msg, *m_camera_info_msg);
+  }
+  m_topic_diagnostic->tick(m_camera_info_msg->header.stamp);
 }
 }  // namespace usb_cam
 
